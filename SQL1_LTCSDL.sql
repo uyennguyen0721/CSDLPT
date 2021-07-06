@@ -308,3 +308,260 @@ GO
 
 ---- Kiểm tra
 EXEC sp_QuantityOfProductsInStock 21
+
+----- Câu 11 -------
+USE Northwind
+GO
+CREATE PROC sp_AddProducts
+@ID INT, @Name NVARCHAR(40), @SupID INT, @CateID INT, @QPUnit NVARCHAR(20), 
+@UnitPrice MONEY,@UnitIS SMALLINT, @UnitOO SMALLINT, @RLevel SMALLINT, @Disc BIT
+AS
+BEGIN
+	BEGIN TRY
+		IF EXISTS (SELECT * FROM Products WHERE ProductID = @ID)
+			Print N'Mã sản phẩm đã tồn tại'
+		ELSE
+			BEGIN
+				INSERT INTO Products
+				VALUES (@Name, @SupID, @CateID, @QPUnit, @UnitPrice, @UnitIS, @UnitOO, @RLevel, @Disc)
+				print N'Thêm sản phẩm thành công'
+			END
+	END TRY
+	BEGIN CATCH
+		Print N'Lỗi hệ thống'
+	END CATCH
+END
+GO
+
+---- Kiểm tra
+EXEC sp_AddProducts 5, N'Nước ngọt', null, null, null, null, null, null, null, 0.15
+EXEC sp_AddProducts null, N'Nước ngọt', null, null, null, null, null, null, null, 0.15 
+
+----- Câu 12 -------
+USE Northwind
+GO
+CREATE PROC sp_UnitPriceOfProducts
+@MaSP INT
+AS
+BEGIN
+	BEGIN TRY
+		IF NOT EXISTS (SELECT * FROM Products WHERE ProductID = @MaSP)
+			Print N'Sản phẩm không tồn tại'
+		ELSE 
+			BEGIN
+				SELECT UnitPrice
+				FROM Products
+				WHERE ProductID = @MaSP
+			END
+	END TRY
+	BEGIN CATCH
+		Print N'Lỗi hệ thống'
+	END CATCH
+END
+GO
+
+---- Kiểm tra
+EXEC sp_UnitPriceOfProducts 78
+EXEC sp_UnitPriceOfProducts 7
+
+----- Câu 13 -------
+USE Northwind
+GO
+CREATE PROC sp_DeleteProductInfo
+@MaSP INT
+AS
+BEGIN
+	BEGIN TRY
+		IF NOT EXISTS (SELECT * FROM Products WHERE ProductID = @MaSP)
+			Print N'Sản phẩm không tồn tại'
+		ELSE IF EXISTS (SELECT * FROM [Order Details] od WHERE od.ProductID = @MaSP)
+			Print N'Sản phẩm đang bị tham chiếu'
+		ELSE 
+			BEGIN
+				DELETE FROM Products
+				WHERE ProductID = @MaSP
+				Print N'Xóa sản phẩm thành công'
+			END
+	END TRY
+	BEGIN CATCH
+		Print N'Lỗi hệ thống'
+	END CATCH
+END
+GO
+
+---- Kiểm tra
+EXEC sp_DeleteProductInfo 78
+EXEC sp_DeleteProductInfo 1078
+EXEC sp_DeleteProductInfo 7
+
+
+----- PHẦN 5: VIẾT HÀM (FUNCTION) -------
+
+----- Câu 26 -------
+USE master
+GO
+CREATE FUNCTION fn_CalculateAge
+(
+	@NamSinh INT
+)
+RETURNS INT
+AS
+BEGIN
+	DECLARE @Tuoi INT
+	SET @Tuoi = YEAR(GETDATE()) - @NamSinh
+	RETURN @Tuoi
+END
+GO
+
+----- Kiểm tra
+SELECT dbo.fn_CalculateAge(2000)
+
+----- Câu 27 -------
+USE master
+GO
+CREATE FUNCTION fn_Total
+(
+	@n INT
+)
+RETURNS INT
+AS
+BEGIN
+	DECLARE @Tong INT, @i INT
+	SET @Tong = 0
+	SET @i = 1
+	WHILE @i <= @n
+	BEGIN
+		SET @Tong = @Tong + @i
+		SET @i = @i + 1
+	END
+	RETURN @Tong
+END
+GO
+----- Kiểm tra
+SELECT dbo.fn_Total(10)
+
+----- Câu 28 -------
+USE Northwind
+GO
+CREATE FUNCTION fn_Customer_Order
+(
+	@MaKH NCHAR(5)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT c.*, o.OrderID, o.OrderDate
+	FROM Customers c, Orders o
+	WHERE c.CustomerID = o.CustomerID and c.CustomerID = @MaKH
+)
+GO
+
+----- Kiểm tra
+SELECT * FROM dbo.fn_Customer_Order(N'ALFKI')
+
+----- Câu 29 -------
+USE Northwind
+GO
+CREATE FUNCTION fn_OrderInfo
+(
+	@MaKH NCHAR(5)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT c.CustomerID, o.OrderID, Quantity * UnitPrice * (1 - Discount) as Total
+	FROM Customers c, Orders o, [Order Details] od
+	WHERE c.CustomerID = o.CustomerID and o.OrderID = od.OrderID and c.CustomerID = @MaKH
+)
+GO
+----- Kiểm tra
+SELECT * FROM dbo.fn_OrderInfo(N'ALFKI')
+
+----- Câu 30 -------
+USE Northwind
+GO
+CREATE FUNCTION fn_UnitPriceOfProduct
+(
+	@MaSP INT
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT UnitPrice
+	FROM Products
+	WHERE ProductID = @MaSP
+)
+GO
+----- Kiểm tra
+SELECT * FROM dbo.fn_UnitPriceOfProduct(10)
+
+----- Câu 31 -------
+USE Northwind
+GO
+CREATE FUNCTION fn_OrderDetailInfo
+(
+	@MaKH NCHAR(5)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT o.OrderID, o.CustomerID, o.EmployeeID, o.OrderDate, o.ShipAddress,
+			Quantity * UnitPrice * (1 - Discount) as Total
+	FROM Orders o, [Order Details] od
+	WHERE o.CustomerID = @MaKH and o.OrderID = od.OrderID
+)
+GO
+----- Kiểm tra
+SELECT * FROM dbo.fn_OrderDetailInfo(N'ALFKI')
+
+
+----- PHẦN 6: CÀI ĐẶT CÁC TRIGGER -------
+
+----- Câu 34 -------
+USE Northwind
+GO
+CREATE TRIGGER tg_CheckOrderDate
+ON Orders
+FOR INSERT, UPDATE
+AS
+BEGIN
+	DECLARE @OrderDate DATETIME
+	SELECT @OrderDate = OrderDate FROM inserted
+	IF DATEDIFF(DAY, GETDATE(), @OrderDate) > 0
+	BEGIN
+		Raiserror(N'Ngày đặt hàng không được lớn hơn ngày hiện tại', 16, 1)
+		ROLLBACK TRANSACTION
+	END
+END
+
+---- Kiểm tra
+INSERT INTO Orders(OrderDate)
+VALUES(N'2021/7/8')
+SELECT @@IDENTITY
+
+----- Câu 35 -------
+USE Northwind
+GO
+CREATE TRIGGER tg_CheckOrder
+ON [Order Details]
+FOR INSERT, UPDATE
+AS
+BEGIN
+	DECLARE @UnitInStock SMALLINT, @ProductID INT
+	SELECT @UnitInStock = p.UnitsInStock FROM inserted i, Products p, Orders o
+	WHERE i.OrderID = o.OrderID and i.ProductID = p.ProductID and p.ProductID = @ProductID
+	IF @UnitInStock < 0
+	BEGIN
+		Raiserror(N'Không thể đặt hàng vì mặt hàng này không còn trong kho', 16, 1)
+		ROLLBACK TRANSACTION
+	END
+END
+
+---- Kiểm tra
+INSERT INTO [Order Details]
+VALUES(1, 5, 21.35, 5, 0.1)
+SELECT @@IDENTITY
