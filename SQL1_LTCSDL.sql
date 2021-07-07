@@ -547,13 +547,14 @@ SELECT @@IDENTITY
 USE Northwind
 GO
 CREATE TRIGGER tg_CheckOrder
-ON [Order Details]
-FOR INSERT, UPDATE
+ON Orders
+FOR INSERT
 AS
 BEGIN
 	DECLARE @UnitInStock SMALLINT, @ProductID INT
-	SELECT @UnitInStock = p.UnitsInStock FROM inserted i, Products p, Orders o
-	WHERE i.OrderID = o.OrderID and i.ProductID = p.ProductID and p.ProductID = @ProductID
+	SET @UnitInStock = (SELECT p.UnitsInStock
+						FROM inserted i, [Order Details] o, Products p
+						WHERE i.OrderID = o.OrderID and o.ProductID = p.ProductID and p.ProductID = @ProductID)
 	IF @UnitInStock < 0
 	BEGIN
 		Raiserror(N'Không thể đặt hàng vì mặt hàng này không còn trong kho', 16, 1)
@@ -562,6 +563,6 @@ BEGIN
 END
 
 ---- Kiểm tra
-INSERT INTO [Order Details]
+INSERT INTO Orders
 VALUES(1, 5, 21.35, 5, 0.1)
 SELECT @@IDENTITY
