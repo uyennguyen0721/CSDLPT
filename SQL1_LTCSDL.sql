@@ -419,26 +419,32 @@ SELECT dbo.fn_CalculateAge(2000)
 ----- Câu 27 -------
 USE master
 GO
-CREATE FUNCTION fn_Total
-(
-	@n INT
-)
+CREATE FUNCTION fn_TotalElement(@n INT)
 RETURNS INT
 AS
 BEGIN
-	DECLARE @Tong INT, @i INT
-	SET @Tong = 0
-	SET @i = 1
+	DECLARE @i INT, @j INT, @Tong INT, @sus INT
+	SET @i = 2; SET @Tong = 0
 	WHILE @i <= @n
 	BEGIN
-		SET @Tong = @Tong + @i
+		SET @sus = 0
+		SET @j = 1
+		WHILE @j <= @i
+		BEGIN
+			IF (@i % @j = 0)
+				SET @sus = @sus + 1
+			SET @j = @j + 1
+		END
+		IF (@sus = 2)
+			SET @Tong = @Tong + @i
 		SET @i = @i + 1
-	END
-	RETURN @Tong
+	END 
+	RETURN @Tong	
 END
 GO
+
 ----- Kiểm tra
-SELECT dbo.fn_Total(10)
+SELECT dbo.fn_TotalElement(20)
 
 ----- Câu 28 -------
 USE Northwind
@@ -546,23 +552,43 @@ SELECT @@IDENTITY
 ----- Câu 35 -------
 USE Northwind
 GO
-CREATE TRIGGER tg_CheckOrder
-ON Orders
-FOR INSERT
-AS
+CREATE TRIGGER tg_CheckOrders 
+ON [Order Details]
+FOR INSERT, UPDATE
+AS 
+IF UPDATE(productid)
 BEGIN
-	DECLARE @UnitInStock SMALLINT, @ProductID INT
-	SET @UnitInStock = (SELECT p.UnitsInStock
-						FROM inserted i, [Order Details] o, Products p
-						WHERE i.OrderID = o.OrderID and o.ProductID = p.ProductID and p.ProductID = @ProductID)
-	IF @UnitInStock < 0
+	IF EXISTS (SELECT * FROM inserted i, Products p 
+			   WHERE i.ProductID = p.ProductID and p.UnitsInStock = 0)
 	BEGIN
-		Raiserror(N'Không thể đặt hàng vì mặt hàng này không còn trong kho', 16, 1)
+		Raiserror (N'Không thể đặt hàng vì mặt hàng này không còn trong kho!', 16, 1)
 		ROLLBACK TRANSACTION
 	END
 END
 
 ---- Kiểm tra
-INSERT INTO Orders
-VALUES(1, 5, 21.35, 5, 0.1)
+INSERT INTO [Order Details]
+VALUES(10248, 5, 21.35, 5, 0.1)
+SELECT @@IDENTITY
+
+----- Câu 36 -------
+USE Northwind
+GO
+CREATE TRIGGER tg_CkeckOrderQuantity 
+ON [Order Details]
+FOR INSERT, UPDATE
+AS 
+IF UPDATE(quantity)
+BEGIN
+	IF EXISTS (SELECT * FROM inserted i, Products p 
+			   WHERE i.ProductID = p.ProductID and i.Quantity >= p.UnitsInStock)
+	BEGIN
+		Raiserror (N'Số lượng đặt hàng phải nhỏ hơn số lượng tồn hiện có!', 16, 1)
+		ROLLBACK TRANSACTION
+	END
+END
+
+---- Kiểm tra
+INSERT INTO [Order Details]
+VALUES(10248, 8, 40.00, 5, 0.1)
 SELECT @@IDENTITY

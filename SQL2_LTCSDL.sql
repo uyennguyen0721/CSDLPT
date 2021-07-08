@@ -299,3 +299,297 @@ GO
 
 ---- Kiểm tra
 EXEC sp_EmployeesInformation N'1999-2-7'
+
+----- Câu 10 -------
+USE HRDatabase
+GO
+CREATE PROC sp_Working_HighAvgSalary
+@Salary DECIMAL(8, 2)
+AS
+BEGIN
+	SELECT j.job_id, AVG(e.salary) as Avg_Salary
+	FROM hr.employees e INNER JOIN hr.jobs j ON e.job_id = j.job_id
+	GROUP BY j.job_id
+	HAVING AVG(e.salary) > @Salary
+	ORDER BY AVG(e.salary) DESC
+END
+GO
+
+---- Kiểm tra
+EXEC sp_Working_HighAvgSalary 6000
+
+
+----- PHẦN 3: FUNCTION -------
+
+----- Câu 1 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_Employees_MoreAvgSalary()
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT e.employee_id, e.first_name + N' ' + e.last_name as Full_Name, j.job_title, e.salary
+	FROM hr.employees e INNER JOIN hr.jobs j ON e.job_id = j.job_id
+	WHERE e.salary > ALL ( SELECT AVG(e1.salary)
+						   FROM hr.employees e1 INNER JOIN hr.jobs j1 ON e1.job_id = j1.job_id
+						   GROUP BY j1.job_id )
+)
+GO
+
+----- Kiểm tra
+SELECT * FROM fn_Employees_MoreAvgSalary()
+
+----- Câu 2 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_WorkingInfo
+(
+	@StartValue DECIMAL(8, 2), @EndValue DECIMAL(8, 2)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT j.job_title, j.min_salary, j.max_salary, j.max_salary - j.min_salary as Diff_Salary
+	FROM hr.jobs j
+	WHERE j.min_salary >= @StartValue and j.max_salary <= @EndValue
+)
+GO
+
+----- Kiểm tra
+SELECT * FROM fn_WorkingInfo(4000, 10000)
+
+----- Câu 3 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_EmployeeInfo_NameStartWith
+(
+	@Letter NVARCHAR(20)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT TOP(100) e.first_name + N' ' + e.last_name as Full_Name
+	FROM hr.employees e
+	WHERE e.first_name LIKE @Letter + '%' or e.last_name LIKE @Letter + '%'
+	ORDER BY e.first_name + N' ' + e.last_name DESC
+)
+GO
+----- Kiểm tra
+SELECT * FROM fn_EmployeeInfo_NameStartWith('B')
+
+----- Câu 5 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_DepartmentInfo
+(
+	@ManagerName NVARCHAR(25)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT TOP(100) d.*
+	FROM hr.departments d
+	WHERE d.manager_id IN (	SELECT e.employee_id
+							FROM hr.employees e
+							WHERE e.last_name = @ManagerName )
+	ORDER BY d.department_name DESC
+)
+GO
+----- Kiểm tra
+SELECT * FROM fn_DepartmentInfo(N'Raphaely')
+
+----- Câu 6 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_EmployeesInfor
+(
+	@DepartmentID BIGINT
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT e.first_name + N' ' + e.last_name as Full_Name, e.salary, e.department_id
+	FROM hr.employees e
+	WHERE e.department_id = @DepartmentID 
+		  and e.salary > (	SELECT MIN(e1.salary)
+							FROM hr.employees e1 INNER JOIN hr.departments d ON e1.department_id = d.department_id
+							WHERE d.department_id = @DepartmentID	)
+)
+GO
+----- Kiểm tra
+SELECT * FROM fn_EmployeesInfor(60)
+
+----- Câu 7 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_EmployeesInfo
+(
+	@EmployeeID BIGINT
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT e.first_name + N' ' + e.last_name as Full_Name, e.salary, e.department_id
+	FROM hr.employees e
+	WHERE e.department_id = ( SELECT e1.department_id
+							  FROM hr.employees e1
+							  WHERE e1.employee_id = @EmployeeID )
+)
+GO
+----- Kiểm tra
+SELECT * FROM fn_EmployeesInfo(102)
+
+----- Câu 8 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_DepartmentInTheCountry
+(
+	@CountryName NVARCHAR(40)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT d.department_name, l.street_address, l.state_province, l.city, l.country_id
+	FROM hr.departments d INNER JOIN hr.locations l ON d.location_id = l.location_id
+	WHERE l.country_id = ( SELECT c.country_id
+						   FROM hr.countries c
+						   WHERE c.country_name = @CountryName)
+)
+GO
+----- Kiểm tra
+SELECT * FROM fn_DepartmentInTheCountry(N'United Kingdom')
+
+----- Câu 9 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_Employee
+(
+	@EmployeeName NVARCHAR(20)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT e.first_name + N' ' + e.last_name as Full_Name, e.salary
+	FROM hr.employees e
+	WHERE e.salary > (	SELECT e1.salary
+						FROM hr.employees e1 
+						WHERE e1.first_name = @EmployeeName)
+)
+GO
+----- Kiểm tra
+SELECT * FROM fn_Employee(N'Daniel')
+
+----- Câu 10 -------
+USE HRDatabase
+GO
+CREATE FUNCTION fn_SalaryOfEmployees
+(
+	@Salary DECIMAL(8, 2)
+)
+RETURNS TABLE
+AS
+RETURN
+(
+	SELECT e.first_name + N' ' + e.last_name as Full_Name, e.salary, e.department_id
+	FROM hr.employees e
+	WHERE e.salary > @Salary
+)
+GO
+----- Kiểm tra
+SELECT * FROM fn_SalaryOfEmployees(9000)
+
+
+----- PHẦN 4: TRIGGER -------
+
+----- Câu 1 -------
+USE HRDatabase
+GO
+CREATE TRIGGER tg_CheckHireDate
+ON hr.employees
+FOR INSERT
+AS
+BEGIN
+	DECLARE @HireDate DATETIME
+	SELECT @HireDate = hire_date FROM inserted
+	IF DATEDIFF(DAY, GETDATE(), @HireDate) > 0
+	BEGIN
+		Raiserror(N'The hire date is no greater than the current date!', 16, 1)
+		ROLLBACK TRANSACTION
+	END
+END
+
+---- Kiểm tra
+INSERT INTO hr.employees(employee_id, last_name, email, job_id, salary, hire_date)
+VALUES(99, N'Nguyen', N'uyennguyen0721@gmail.com', N'IT_PROG', 21000, N'2021/7/9')
+SELECT @@IDENTITY
+
+----- Câu 2 -------
+USE HRDatabase
+GO
+CREATE TRIGGER tg_CheckManagerID
+ON hr.departments
+FOR INSERT
+AS
+	IF EXISTS (	SELECT *
+				FROM hr.departments
+				WHERE manager_id NOT IN(SELECT manager_id
+										FROM hr.employees
+										WHERE manager_id IS NOT NULL))
+	BEGIN
+		Raiserror(N'The manage id must existed in employee table!', 16, 1)
+		ROLLBACK TRANSACTION
+	END
+GO
+---- Kiểm tra
+INSERT INTO hr.departments(department_id, department_name, manager_id)
+VALUES(1, N'Test IO', 40)
+SELECT @@IDENTITY
+
+----- Câu 3 -------
+USE HRDatabase
+GO
+CREATE TRIGGER tg_DoNotAllowDelete
+ON hr.job_history
+FOR DELETE, UPDATE
+AS
+BEGIN
+	IF EXISTS (SELECT * FROM deleted i, hr.jobs j WHERE i.job_id = j.job_id)
+	BEGIN
+		Raiserror(N'Do not allow deletion of any rows for the job history table!', 16, 1)
+		ROLLBACK TRANSACTION
+	END
+END
+GO
+---- Kiểm tra
+DELETE FROM hr.job_history
+WHERE job_id = N'AC_MGR'
+SELECT @@IDENTITY
+
+----- Câu 4 -------
+USE HRDatabase
+GO
+CREATE TRIGGER tg_UpdateJobs
+ON hr.jobs
+FOR UPDATE
+AS
+BEGIN
+	IF EXISTS (SELECT * FROM inserted WHERE min_salary >= max_salary)
+	BEGIN
+		Raiserror(N'the min salary must less than max salary!', 16, 1)
+		ROLLBACK TRANSACTION
+	END
+END
+GO
+---- Kiểm tra
+UPDATE hr.jobs
+SET min_salary = 2000, max_salary = 1000
+WHERE job_id = N'AD_ASST'
+SELECT @@IDENTITY
